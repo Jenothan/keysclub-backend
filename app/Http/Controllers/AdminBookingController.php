@@ -9,8 +9,8 @@ class AdminBookingController extends Controller
 {
     public function index()
     {
-        // Get all bookings with user and court info, ordered by newest first
-        $bookings = Booking::with(['user', 'court'])->latest()->get();
+        // Get all bookings with user, court and bookedBy info, ordered by newest first
+        $bookings = Booking::with(['user', 'court', 'bookedBy'])->latest()->get();
         return response()->json($bookings);
     }
 

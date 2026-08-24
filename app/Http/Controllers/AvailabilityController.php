@@ -30,7 +30,7 @@ class AvailabilityController extends Controller
             ];
         }
 
-        $bookings = Booking::where('court_id', $courtId)
+        $bookings = Booking::with('user')->where('court_id', $courtId)
             ->where('booking_date', $date)
             ->whereIn('status', ['Pending', 'Confirmed'])
             ->get();
@@ -48,6 +48,7 @@ class AvailabilityController extends Controller
                 'start_time' => $slot['start_time'],
                 'end_time' => $slot['end_time'],
                 'status' => $status,
+                'user' => $booking && $booking->user ? $booking->user->name : null,
             ];
         });
 

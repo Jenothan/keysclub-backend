@@ -12,7 +12,7 @@ class WebsiteDataController extends Controller
         $data = WebsiteData::first();
         
         if (!$data) {
-            return response()->json(['message' => 'Website data not found.'], 404);
+            return response()->json(new \stdClass());
         }
 
         return response()->json($data);

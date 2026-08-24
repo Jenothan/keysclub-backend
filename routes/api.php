@@ -14,6 +14,8 @@ use App\Http\Controllers\AdminDashboardController;
 use App\Http\Controllers\AdminBookingController;
 use App\Http\Controllers\AdminManagementController;
 use App\Http\Controllers\WebsiteDataController;
+use App\Http\Controllers\AdminUserController;
+use App\Http\Controllers\InquiryController;
 
 Route::post('/register', [AuthController::class, 'register']);
 Route::post('/login', [AuthController::class, 'login']);
@@ -23,6 +25,9 @@ Route::get('/availability', [AvailabilityController::class, 'index']);
 
 // Public Website Data
 Route::get('/website-data', [WebsiteDataController::class, 'show']);
+
+// Public Inquiries
+Route::post('/inquiries', [InquiryController::class, 'store']);
 
 Route::middleware('auth:sanctum')->group(function () {
     Route::post('/logout', [AuthController::class, 'logout']);
@@ -48,10 +53,17 @@ Route::middleware(['auth:sanctum', 'role:Admin,Super Admin'])->prefix('admin')->
     // Dashboard Stats
     Route::get('/stats', [AdminDashboardController::class, 'stats']);
     
-    // Booking Management
+    // Users Management
+    Route::get('/users', [AdminUserController::class, 'index']);
+    
+    // Bookings Management
     Route::get('/bookings', [AdminBookingController::class, 'index']);
     Route::post('/bookings/{id}/confirm', [AdminBookingController::class, 'confirm']);
     Route::post('/bookings/{id}/reject', [AdminBookingController::class, 'reject']);
+
+    // Inquiries Management
+    Route::get('/inquiries', [InquiryController::class, 'index']);
+    Route::post('/inquiries/{id}/resolve', [InquiryController::class, 'resolve']);
 });
 
 // --- SUPER ADMIN EXCLUSIVE ROUTES ---

@@ -34,12 +34,23 @@ class BookingController extends Controller
 
     public function store(Request $request)
     {
-        $request->validate([
+        $user = $request->user();
+        $isAdmin = in_array($user->role, ['Admin', 'Super Admin']);
+
+        $rules = [
             'court_id' => 'required|exists:courts,id',
             'date' => 'required|date|after_or_equal:today',
             'start_time' => 'required|date_format:H:i:s',
             'end_time' => 'required|date_format:H:i:s|after:start_time',
-        ]);
+            'notes' => 'nullable|string',
+        ];
+
+        if ($isAdmin) {
+            $rules['customer_name'] = 'nullable|string|max:255';
+            $rules['customer_phone'] = 'nullable|string|max:255';
+        }
+
+        $request->validate($rules);
 
         $date = Carbon::parse($request->date)->format('Y-m-d');
         
@@ -57,14 +68,26 @@ class BookingController extends Controller
             ]);
         }
 
-        $booking = $request->user()->bookings()->create([
+        $bookingData = [
             'booking_reference' => '#KC-' . strtoupper(Str::random(6)),
             'court_id' => $request->court_id,
             'booking_date' => $date,
             'start_time' => $request->start_time,
             'end_time' => $request->end_time,
             'status' => 'Pending',
-        ]);
+        ];
+
+        if ($isAdmin && ($request->filled('customer_name') || $request->filled('customer_phone'))) {
+            $bookingData['user_id'] = null;
+            $bookingData['customer_name'] = $request->customer_name;
+            $bookingData['customer_phone'] = $request->customer_phone;
+            $bookingData['booked_by_id'] = $user->id;
+            
+            $booking = Booking::create($bookingData);
+        } else {
+            $bookingData['booked_by_id'] = $user->id;
+            $booking = $user->bookings()->create($bookingData);
+        }
 
         return response()->json(['message' => 'Booking created successfully', 'booking' => $booking], 201);
     }
