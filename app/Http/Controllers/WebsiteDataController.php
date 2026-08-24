@@ -26,6 +26,9 @@ class WebsiteDataController extends Controller
             'club_address' => 'required|string',
             'facebook_url' => 'nullable|url',
             'instagram_url' => 'nullable|url',
+            'court_pricing' => 'nullable|string',
+            'membership_pricing' => 'nullable|string',
+            'full_day_pricing' => 'nullable|string',
         ]);
 
         $data = WebsiteData::first();

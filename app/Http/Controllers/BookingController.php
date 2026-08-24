@@ -81,8 +81,53 @@ class BookingController extends Controller
             return response()->json(['message' => 'Cannot cancel a completed booking'], 400);
         }
 
-        $booking->update(['status' => 'Cancelled']);
+        $booking->update([
+            'status' => 'Cancelled',
+            'cancelled_by' => $request->user()->id
+        ]);
 
         return response()->json(['message' => 'Booking cancelled successfully', 'booking' => $booking]);
+    }
+
+    public function reschedule(Request $request, $id)
+    {
+        $request->validate([
+            'date' => 'required|date|after_or_equal:today',
+            'start_time' => 'required|date_format:H:i:s',
+            'end_time' => 'required|date_format:H:i:s|after:start_time',
+        ]);
+
+        $booking = $request->user()->bookings()->findOrFail($id);
+
+        if ($booking->status === 'Cancelled' || $booking->status === 'Completed') {
+            return response()->json(['message' => 'Cannot reschedule a cancelled or completed booking'], 400);
+        }
+
+        $date = Carbon::parse($request->date)->format('Y-m-d');
+        
+        $existing = Booking::where('court_id', $booking->court_id)
+            ->where('booking_date', $date)
+            ->where('start_time', $request->start_time)
+            ->where('id', '!=', $booking->id)
+            ->whereIn('status', ['Pending', 'Confirmed'])
+            ->lockForUpdate()
+            ->first();
+
+        if ($existing) {
+            throw ValidationException::withMessages([
+                'slot' => ['This slot is already booked. Please choose another.'],
+            ]);
+        }
+
+        $booking->update([
+            'booking_date' => $date,
+            'start_time' => $request->start_time,
+            'end_time' => $request->end_time,
+            'rescheduled_by' => $request->user()->id,
+            // Assuming rescheduling makes it pending again or keeps it confirmed? Usually pending.
+            'status' => 'Pending' 
+        ]);
+
+        return response()->json(['message' => 'Booking rescheduled successfully', 'booking' => $booking]);
     }
 }

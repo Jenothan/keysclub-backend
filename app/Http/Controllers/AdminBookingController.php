@@ -23,6 +23,7 @@ class AdminBookingController extends Controller
         }
 
         $booking->status = 'Confirmed';
+        $booking->confirmed_by = request()->user()->id;
         $booking->save();
 
         // Optional: send SMS/Email notification to the user here
@@ -42,6 +43,7 @@ class AdminBookingController extends Controller
         }
 
         $booking->status = 'Rejected';
+        $booking->rejected_by = request()->user()->id;
         $booking->save();
 
         return response()->json([
