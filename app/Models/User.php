@@ -11,10 +11,19 @@ use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
 use Laravel\Sanctum\HasApiTokens;
 
-#[Fillable(['name', 'phone', 'password', 'profile_photo_path', 'role', 'phone_verified_at'])]
+#[Fillable(['name', 'email', 'phone', 'password', 'profile_photo_path', 'role', 'phone_verified_at'])]
 #[Hidden(['password', 'remember_token'])]
 class User extends Authenticatable
 {
+    public function isAdmin(): bool
+    {
+        return in_array($this->role, ['Admin', 'Super Admin']);
+    }
+
+    public function isSuperAdmin(): bool
+    {
+        return $this->role === 'Super Admin';
+    }
     /** @use HasFactory<UserFactory> */
     use HasApiTokens, HasFactory, Notifiable;
 
