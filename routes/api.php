@@ -17,7 +17,8 @@ use App\Http\Controllers\WebsiteDataController;
 use App\Http\Controllers\AdminUserController;
 use App\Http\Controllers\InquiryController;
 
-Route::post('/register', [AuthController::class, 'register']);
+Route::post('/register/request-otp', [AuthController::class, 'requestRegisterOtp']);
+Route::post('/register/verify', [AuthController::class, 'verifyAndRegister']);
 Route::post('/login', [AuthController::class, 'login']);
 
 Route::get('/courts', [CourtController::class, 'index']);
@@ -60,6 +61,13 @@ Route::middleware(['auth:sanctum', 'role:Admin,Super Admin'])->prefix('admin')->
     Route::get('/bookings', [AdminBookingController::class, 'index']);
     Route::post('/bookings/{id}/confirm', [AdminBookingController::class, 'confirm']);
     Route::post('/bookings/{id}/reject', [AdminBookingController::class, 'reject']);
+    Route::post('/bookings/{id}/cancel', [AdminBookingController::class, 'cancel']);
+    Route::post('/bookings/{id}/reschedule', [AdminBookingController::class, 'reschedule']);
+
+    // Blocked Dates
+    Route::get('/blocked-dates', [App\Http\Controllers\AdminBlockedDateController::class, 'index']);
+    Route::post('/blocked-dates', [App\Http\Controllers\AdminBlockedDateController::class, 'store']);
+    Route::delete('/blocked-dates/{date}', [App\Http\Controllers\AdminBlockedDateController::class, 'destroy']);
 
     // Inquiries Management
     Route::get('/inquiries', [InquiryController::class, 'index']);

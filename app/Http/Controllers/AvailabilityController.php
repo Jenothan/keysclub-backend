@@ -11,12 +11,18 @@ class AvailabilityController extends Controller
     public function index(Request $request)
     {
         $request->validate([
-            'date' => 'required|date',
-            'court_id' => 'required|exists:courts,id'
+            'date' => 'required|date'
         ]);
 
-        $date = Carbon::parse($request->date)->format('Y-m-d');
+        $date = \Carbon\Carbon::parse($request->date)->format('Y-m-d');
         $courtId = $request->court_id;
+        if (!$courtId || !\App\Models\Court::where('id', $courtId)->exists()) {
+            $firstCourt = \App\Models\Court::first();
+            if (!$firstCourt) {
+                return response()->json([], 404); // Or any error indicating no courts
+            }
+            $courtId = $firstCourt->id;
+        }
 
         // Operating hours: 6:00 AM to 10:00 PM (22:00)
         $startHour = 6;
@@ -35,10 +41,14 @@ class AvailabilityController extends Controller
             ->whereIn('status', ['Pending', 'Confirmed'])
             ->get();
 
-        $availability = collect($slots)->map(function ($slot) use ($bookings) {
+        $isBlockedDate = \App\Models\BlockedDate::whereDate('date', $date)->exists();
+
+        $availability = collect($slots)->map(function ($slot) use ($bookings, $isBlockedDate) {
             $booking = $bookings->firstWhere('start_time', $slot['start_time']);
             
-            if ($booking) {
+            if ($isBlockedDate) {
+                $status = 'Blocked';
+            } elseif ($booking) {
                 $status = $booking->status === 'Confirmed' ? 'Booked' : 'Pending';
             } else {
                 $status = 'Available';
