@@ -28,6 +28,7 @@ class WebsiteDataController extends Controller
             'instagram_url' => 'nullable|url',
             'court_pricing' => 'nullable|string',
             'membership_pricing' => 'nullable|string',
+            'registration_fee' => 'nullable|string',
             'full_day_pricing' => 'nullable|string',
         ]);
 

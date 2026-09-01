@@ -34,11 +34,32 @@ class InquiryController extends Controller
     }
 
     /**
-     * Get all inquiries (Admin endpoint).
+     * Get all inquiries with search and filters (Admin endpoint).
      */
-    public function index()
+    public function index(Request $request)
     {
-        $inquiries = Inquiry::orderBy('created_at', 'desc')->get();
+        $query = Inquiry::query();
+
+        if ($request->filled('search')) {
+            $search = trim($request->search);
+            $query->where(function ($q) use ($search) {
+                $q->where('name', 'like', "%{$search}%")
+                  ->orWhere('mobile', 'like', "%{$search}%")
+                  ->orWhere('subject', 'like', "%{$search}%")
+                  ->orWhere('message', 'like', "%{$search}%")
+                  ->orWhere('id', 'like', "%{$search}%");
+            });
+        }
+
+        if ($request->filled('subject') && $request->subject !== 'All Subjects') {
+            $query->where('subject', $request->subject);
+        }
+
+        if ($request->filled('status') && $request->status !== 'All Statuses') {
+            $query->where('status', $request->status);
+        }
+
+        $inquiries = $query->orderBy('created_at', 'desc')->get();
         return response()->json($inquiries);
     }
 

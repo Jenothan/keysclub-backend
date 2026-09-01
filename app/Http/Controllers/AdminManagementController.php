@@ -45,24 +45,31 @@ class AdminManagementController extends Controller
             return response()->json(['message' => 'Maximum limit of 5 administrators reached.'], 422);
         }
 
+        if (!SmsService::checkDailyOtpLimit($validated['phone'])) {
+            return response()->json([
+                'message' => 'Maximum limit of 3 OTP requests per day reached for this phone number. Please try again tomorrow.'
+            ], 422);
+        }
+
         // Generate OTP
-        $otpCode = (string) rand(100000, 999999);
+        $otpCode = (string) rand(1000, 9999);
         
         // Save OTP
         OtpVerification::updateOrCreate(
             ['phone' => $validated['phone'], 'purpose' => 'admin_creation'],
-            ['otp_code' => $otpCode, 'expires_at' => now()->addMinutes(10)]
+            ['otp_code' => $otpCode, 'expires_at' => now()->addMinutes(10), 'purpose' => 'admin_creation']
         );
 
         // Save admin details temporarily in cache
         Cache::put('admin_creation_' . $validated['phone'], $validated, now()->addMinutes(10));
 
-        // In a real app, send OTP via SMS here.
-        // For development, we might just return it or log it.
-        
+        SmsService::incrementDailyOtpCount($validated['phone']);
+
+        // Send OTP via SMS
+        SmsService::sendSms($validated['phone'], "Your KEYS Club Admin creation OTP is: {$otpCode}. Valid for 10 minutes.");
+
         return response()->json([
-            'message' => 'OTP sent successfully.',
-            // 'otp_code' => $otpCode // Only for testing, remove in production
+            'message' => 'OTP sent successfully.'
         ]);
     }
 

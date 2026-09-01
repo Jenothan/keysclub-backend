@@ -20,6 +20,8 @@ use App\Http\Controllers\InquiryController;
 Route::post('/register/request-otp', [AuthController::class, 'requestRegisterOtp']);
 Route::post('/register/verify', [AuthController::class, 'verifyAndRegister']);
 Route::post('/login', [AuthController::class, 'login']);
+Route::post('/password/forgot/request-otp', [AuthController::class, 'requestForgotPasswordOtp']);
+Route::post('/password/forgot/reset', [AuthController::class, 'resetPasswordWithOtp']);
 
 Route::get('/courts', [CourtController::class, 'index']);
 Route::get('/availability', [AvailabilityController::class, 'index']);
@@ -56,6 +58,7 @@ Route::middleware(['auth:sanctum', 'role:Admin,Super Admin'])->prefix('admin')->
     
     // Users Management
     Route::get('/users', [AdminUserController::class, 'index']);
+    Route::post('/users/{id}/toggle-status', [AdminUserController::class, 'toggleStatus']);
     
     // Bookings Management
     Route::get('/bookings', [AdminBookingController::class, 'index']);
@@ -63,11 +66,18 @@ Route::middleware(['auth:sanctum', 'role:Admin,Super Admin'])->prefix('admin')->
     Route::post('/bookings/{id}/reject', [AdminBookingController::class, 'reject']);
     Route::post('/bookings/{id}/cancel', [AdminBookingController::class, 'cancel']);
     Route::post('/bookings/{id}/reschedule', [AdminBookingController::class, 'reschedule']);
+    Route::post('/availability/block', [AdminBookingController::class, 'blockSlots']);
 
-    // Blocked Dates
+    // Blocked Dates & Recurring Slots
     Route::get('/blocked-dates', [App\Http\Controllers\AdminBlockedDateController::class, 'index']);
     Route::post('/blocked-dates', [App\Http\Controllers\AdminBlockedDateController::class, 'store']);
     Route::delete('/blocked-dates/{date}', [App\Http\Controllers\AdminBlockedDateController::class, 'destroy']);
+
+    Route::get('/recurring-blocked-slots', [App\Http\Controllers\RecurringBlockedSlotController::class, 'index']);
+    Route::post('/recurring-blocked-slots', [App\Http\Controllers\RecurringBlockedSlotController::class, 'store']);
+    Route::delete('/recurring-blocked-slots/{id}', [App\Http\Controllers\RecurringBlockedSlotController::class, 'destroy']);
+    Route::post('/slot-overrides', [App\Http\Controllers\RecurringBlockedSlotController::class, 'setOverride']);
+    Route::delete('/slot-overrides', [App\Http\Controllers\RecurringBlockedSlotController::class, 'removeOverride']);
 
     // Inquiries Management
     Route::get('/inquiries', [InquiryController::class, 'index']);
