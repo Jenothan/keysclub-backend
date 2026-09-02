@@ -52,7 +52,12 @@ class AvailabilityController extends Controller
                 $q->whereNull('court_id')->orWhere('court_id', $courtId);
             })->get();
 
-        $availability = collect($slots)->map(function ($slot) use ($bookings, $isBlockedDate, $recurringBlockedSlots, $slotOverrides, $courtId) {
+        $now = \Carbon\Carbon::now('Asia/Colombo');
+        $todayStr = $now->format('Y-m-d');
+        $isToday = ($date === $todayStr);
+        $isPastDate = ($date < $todayStr);
+
+        $availability = collect($slots)->map(function ($slot) use ($bookings, $isBlockedDate, $recurringBlockedSlots, $slotOverrides, $courtId, $date, $now, $isToday, $isPastDate) {
             $booking = $bookings->first(function ($b) use ($slot) {
                 return $slot['start_time'] >= $b->start_time && $slot['end_time'] <= $b->end_time;
             });
@@ -65,14 +70,19 @@ class AvailabilityController extends Controller
                 return $slot['start_time'] >= $r->start_time && $slot['end_time'] <= $r->end_time;
             });
 
+            $slotStartDateTime = \Carbon\Carbon::parse($date . ' ' . $slot['start_time']);
+            $isPastSlot = $isPastDate || ($isToday && $now->greaterThanOrEqualTo($slotStartDateTime));
+
             if ($isBlockedDate || ($booking && $booking->status === 'Blocked')) {
                 $status = 'Blocked';
             } elseif ($booking) {
-                $status = $booking->status === 'Confirmed' ? 'Booked' : 'Pending';
+                $status = $booking->status === 'Confirmed' ? 'Booked' : ($booking->status === 'Pending' ? 'Pending' : $booking->status);
             } elseif ($override) {
                 $status = $override->status;
             } elseif ($recurringBlock) {
                 $status = 'Blocked';
+            } elseif ($isPastSlot) {
+                $status = 'Past';
             } else {
                 $status = 'Available';
             }
@@ -82,6 +92,7 @@ class AvailabilityController extends Controller
                 'start_time' => $slot['start_time'],
                 'end_time' => $slot['end_time'],
                 'status' => $status,
+                'is_past' => $isPastSlot,
                 'is_recurring_blocked' => !!$recurringBlock,
                 'is_overridden' => !!$override,
                 'user' => $booking && $booking->user ? $booking->user->name : ($booking && $booking->customer_name ? $booking->customer_name : null),

@@ -7,11 +7,6 @@ use Illuminate\Support\Facades\Log;
 
 class SmsService
 {
-    protected static $userId = '2442';
-    protected static $apiKey = 'e16bcc77-ba66-4cc8-a84d-099e7705aded';
-    protected static $senderId = 'SMSlenzDEMO';
-    protected static $apiUrl = 'https://smslenz.lk/api/send-sms';
-
     /**
      * Send SMS via SMSlenz.lk API
      */
@@ -20,10 +15,20 @@ class SmsService
         try {
             $formattedContact = self::formatContact($contact);
 
-            $response = Http::withoutVerifying()->timeout(15)->post(self::$apiUrl, [
-                'user_id' => self::$userId,
-                'api_key' => self::$apiKey,
-                'sender_id' => self::$senderId,
+            $userId = config('services.sms.user_id') ?: env('SMS_USER_ID');
+            $apiKey = config('services.sms.api_key') ?: env('SMS_API_KEY');
+            $senderId = config('services.sms.sender_id') ?: env('SMS_SENDER_ID');
+            $apiUrl = config('services.sms.api_url') ?: env('SMS_API_URL', 'https://smslenz.lk/api/send-sms');
+
+            if (!$userId || !$apiKey || !$senderId) {
+                Log::error("SMS service error: Credentials missing in .env configuration.");
+                return false;
+            }
+
+            $response = Http::withoutVerifying()->timeout(15)->post($apiUrl, [
+                'user_id' => $userId,
+                'api_key' => $apiKey,
+                'sender_id' => $senderId,
                 'contact' => $formattedContact,
                 'message' => $message,
             ]);

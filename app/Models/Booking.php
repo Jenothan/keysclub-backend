@@ -12,6 +12,34 @@ class Booking extends Model
     /** @use HasFactory<\Database\Factories\BookingFactory> */
     use HasFactory;
 
+    public function getStatusAttribute($value)
+    {
+        if ($value !== 'Confirmed') {
+            return $value;
+        }
+
+        try {
+            $now = \Carbon\Carbon::now('Asia/Colombo');
+            $bookingDateStr = $this->booking_date;
+            if (is_string($bookingDateStr) && str_contains($bookingDateStr, 'T')) {
+                $bookingDateStr = explode('T', $bookingDateStr)[0];
+            }
+
+            $startDateTime = \Carbon\Carbon::parse($bookingDateStr . ' ' . $this->start_time);
+            $endDateTime = \Carbon\Carbon::parse($bookingDateStr . ' ' . $this->end_time);
+
+            if ($now->greaterThanOrEqualTo($startDateTime) && $now->lessThanOrEqualTo($endDateTime)) {
+                return 'Ongoing';
+            } elseif ($now->greaterThan($endDateTime)) {
+                return 'Completed';
+            }
+        } catch (\Exception $e) {
+            // fallback
+        }
+
+        return $value;
+    }
+
     public function user()
     {
         return $this->belongsTo(User::class);
