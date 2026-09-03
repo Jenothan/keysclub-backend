@@ -8,6 +8,7 @@ use App\Models\OtpVerification;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Str;
+use App\Services\SmsService;
 
 class AdminManagementController extends Controller
 {
