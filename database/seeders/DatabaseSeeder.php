@@ -28,15 +28,14 @@ class DatabaseSeeder extends Seeder
             ]
         );
 
-        // Seed default Courts if missing
-        \App\Models\Court::firstOrCreate(['name' => 'Court 1'], ['type' => 'Indoor', 'status' => true]);
-        \App\Models\Court::firstOrCreate(['name' => 'Court 2'], ['type' => 'Indoor', 'status' => true]);
+        // Seed default Single Court if missing
+        \App\Models\Court::firstOrCreate(['name' => 'KEYS Club Badminton Court'], ['type' => 'Indoor', 'status' => true]);
 
         // Seed default Website Data if missing
         if (\App\Models\WebsiteData::count() === 0) {
             \App\Models\WebsiteData::create([
-                'primary_phone' => '+94 76 332 6098',
-                'support_email' => 'keysclub@gmail.com',
+                'primary_phone' => '+94763326098',
+                'support_email' => 'esanjenothan@gmail.com',
                 'club_address' => 'Karanavai East, Karaveddy, Jaffna',
                 'court_pricing' => '400',
                 'membership_pricing' => '1000',
