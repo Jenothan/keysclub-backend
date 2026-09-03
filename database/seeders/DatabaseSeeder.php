@@ -5,6 +5,7 @@ namespace Database\Seeders;
 use App\Models\User;
 use Illuminate\Database\Console\Seeds\WithoutModelEvents;
 use Illuminate\Database\Seeder;
+use Illuminate\Support\Facades\Hash;
 
 class DatabaseSeeder extends Seeder
 {
@@ -15,11 +16,32 @@ class DatabaseSeeder extends Seeder
      */
     public function run(): void
     {
-        // User::factory(10)->create();
+        // Create Super Admin (if not existing)
+        User::firstOrCreate(
+            ['email' => 'esanjenothan@gmail.com'],
+            [
+                'name' => 'Esan Jenothan',
+                'phone' => '+94763326098',
+                'password' => Hash::make('Jeno@1234'),
+                'role' => 'Super Admin',
+                'phone_verified_at' => now(),
+            ]
+        );
 
-        User::factory()->create([
-            'name' => 'Test User',
-            'email' => 'test@example.com',
-        ]);
+        // Seed default Single Court if missing
+        \App\Models\Court::firstOrCreate(['name' => 'KEYS Club Badminton Court'], ['type' => 'Indoor', 'status' => true]);
+
+        // Seed default Website Data if missing
+        if (\App\Models\WebsiteData::count() === 0) {
+            \App\Models\WebsiteData::create([
+                'primary_phone' => '+94763326098',
+                'support_email' => 'esanjenothan@gmail.com',
+                'club_address' => 'Karanavai East, Karaveddy, Jaffna',
+                'court_pricing' => '400',
+                'membership_pricing' => '1000',
+                'registration_fee' => '2000',
+                'full_day_pricing' => '3000',
+            ]);
+        }
     }
 }

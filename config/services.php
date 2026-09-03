@@ -35,4 +35,11 @@ return [
         ],
     ],
 
+    'sms' => [
+        'user_id' => env('SMS_USER_ID'),
+        'api_key' => env('SMS_API_KEY'),
+        'sender_id' => env('SMS_SENDER_ID'),
+        'api_url' => env('SMS_API_URL', 'https://smslenz.lk/api/send-sms'),
+    ],
+
 ];

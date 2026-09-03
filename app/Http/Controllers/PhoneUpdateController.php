@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use Illuminate\Http\Request;
 use App\Models\OtpVerification;
 use Illuminate\Validation\ValidationException;
+use App\Services\SmsService;
 use Carbon\Carbon;
 use Illuminate\Support\Str;
 
@@ -14,12 +15,18 @@ class PhoneUpdateController extends Controller
     {
         $request->validate([
             'purpose' => 'required|in:old_phone_verify,new_phone_verify',
-            'new_phone' => 'required_if:purpose,new_phone_verify|string|unique:users,phone',
+            'new_phone' => 'required_if:purpose,new_phone_verify|nullable|string|unique:users,phone',
         ]);
 
         $phone = $request->purpose === 'old_phone_verify' 
             ? $request->user()->phone 
             : $request->new_phone;
+
+        if (!SmsService::checkDailyOtpLimit($phone)) {
+            return response()->json([
+                'message' => 'Maximum limit of 3 OTP requests per day reached for this phone number. Please try again tomorrow.'
+            ], 422);
+        }
 
         // Generate a 4 digit OTP
         $otp = rand(1000, 9999);
@@ -31,10 +38,12 @@ class PhoneUpdateController extends Controller
             'expires_at' => Carbon::now()->addMinutes(10)
         ]);
 
-        // In a real application, send the OTP via SMS here.
-        // For testing, we can just return it or assume it sent.
+        SmsService::incrementDailyOtpCount($phone);
 
-        return response()->json(['message' => 'OTP sent successfully', 'otp_hint' => $otp]);
+        // Send OTP via SMSlenz.lk API
+        SmsService::sendSms($phone, "Your KEYS Club phone update OTP is: {$otp}. Valid for 10 minutes.");
+
+        return response()->json(['message' => 'OTP sent successfully']);
     }
 
     public function verifyOtp(Request $request)
