@@ -19,7 +19,7 @@ return [
 
     'allowed_methods' => ['*'],
 
-    'allowed_origins' => ['https://keysportsclub.netlify.app'],
+    'allowed_origins' => ['http://localhost:3000', 'http://127.0.0.1:3000', 'https://keysportsclub.netlify.app', '*'],
 
     'allowed_origins_patterns' => ['.*'],
 
