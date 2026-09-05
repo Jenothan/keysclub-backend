@@ -36,7 +36,7 @@ class AuthController extends Controller
         SmsService::incrementDailyOtpCount($request->phone);
 
         // Send OTP via SMSlenz.lk API
-        SmsService::sendSms($request->phone, "Your KEYS Club signup OTP is: {$otpCode}. Valid for 10 minutes.");
+        SmsService::sendSms($request->phone, "Your OTP to sign up for Badminton Court at Karanavai East Youth Sports Club is: {$otpCode}. Valid for 10 minutes.");
 
         return response()->json([
             'message' => 'OTP sent successfully.'
@@ -71,7 +71,7 @@ class AuthController extends Controller
         OtpVerification::where('phone', $request->phone)->delete();
 
         // Send Welcome SMS via SMSlenz.lk API
-        SmsService::sendSms($user->phone, "Welcome to KEYS Club, {$user->name}! Your account has been registered successfully. Play • Grow • Win!");
+        SmsService::sendSms($user->phone, "Welcome to Karanavai East Youth Sports Club's Badminton Court, {$user->name}! Your account has been registered successfully. Play • Grow • Win!");
 
         $token = $user->createToken('auth_token')->plainTextToken;
 
@@ -137,7 +137,7 @@ class AuthController extends Controller
         SmsService::incrementDailyOtpCount($request->phone);
 
         // Send Password Reset OTP via SMSlenz.lk API
-        SmsService::sendSms($request->phone, "Your KEYS Club password reset OTP is: {$otpCode}. Valid for 10 minutes.");
+        SmsService::sendSms($request->phone, "Your OTP to reset your password for Badminton Court at Karanavai East Youth Sports Club is: {$otpCode}. Valid for 10 minutes.");
 
         return response()->json([
             'message' => 'OTP sent successfully.'

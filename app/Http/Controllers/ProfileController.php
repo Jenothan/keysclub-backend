@@ -18,13 +18,15 @@ class ProfileController extends Controller
 
         $validated = $request->validate([
             'name' => 'required|string|max:255',
-            'email' => 'required|email|max:255|unique:users,email,' . $user->id,
+            'email' => 'nullable|email|max:255',
         ]);
 
-        $user->update([
-            'name' => $validated['name'],
-            'email' => $validated['email'],
-        ]);
+        $updateData = ['name' => $validated['name']];
+        if (array_key_exists('email', $validated)) {
+            $updateData['email'] = $validated['email'];
+        }
+
+        $user->update($updateData);
 
         return response()->json([
             'message' => 'Profile updated successfully',
