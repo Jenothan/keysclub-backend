@@ -41,6 +41,23 @@ class AdminUserController extends Controller
             }
         }
 
+        // Filter by user type (Registered Users / Guest Users / Members / Non-Members)
+        if ($request->filled('type') && $request->type !== 'All Types') {
+            if ($request->type === 'Registered Users') {
+                $query->where(function ($q) {
+                    $q->where('is_guest', false)->orWhereNull('is_guest');
+                });
+            } elseif ($request->type === 'Guest Users') {
+                $query->where('is_guest', true);
+            } elseif ($request->type === 'Members') {
+                $query->where('is_member', true);
+            } elseif ($request->type === 'Non-Members') {
+                $query->where(function ($q) {
+                    $q->where('is_member', false)->orWhereNull('is_member');
+                });
+            }
+        }
+
         $users = $query->orderBy('created_at', 'desc')->get();
 
         return response()->json($users);
@@ -62,6 +79,26 @@ class AdminUserController extends Controller
 
         return response()->json([
             'message' => "User status updated to " . ($user->is_active ? 'Active' : 'Inactive'),
+            'user' => $user
+        ]);
+    }
+
+    /**
+     * Toggle Court Member status of a user.
+     */
+    public function toggleMember($id)
+    {
+        $user = User::findOrFail($id);
+
+        if (in_array($user->role, ['Admin', 'Super Admin'])) {
+            return response()->json(['message' => 'Admins are already court members by default'], 400);
+        }
+
+        $user->is_member = !$user->is_member;
+        $user->save();
+
+        return response()->json([
+            'message' => "{$user->name} is now " . ($user->is_member ? 'a Court Member' : 'a regular user'),
             'user' => $user
         ]);
     }

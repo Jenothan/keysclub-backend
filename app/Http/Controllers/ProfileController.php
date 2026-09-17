@@ -5,8 +5,17 @@ namespace App\Http\Controllers;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Hash;
 
+use App\Services\CloudinaryService;
+
 class ProfileController extends Controller
 {
+    protected CloudinaryService $cloudinaryService;
+
+    public function __construct(CloudinaryService $cloudinaryService)
+    {
+        $this->cloudinaryService = $cloudinaryService;
+    }
+
     public function show(Request $request)
     {
         return response()->json($request->user());
@@ -37,10 +46,10 @@ class ProfileController extends Controller
     public function updatePhoto(Request $request)
     {
         $request->validate([
-            'photo' => 'required|image|max:2048',
+            'photo' => 'required|image|max:5120',
         ]);
 
-        $path = $request->file('photo')->store('profiles', 'public');
+        $path = $this->cloudinaryService->upload($request->file('photo'), 'profiles');
 
         $request->user()->update([
             'profile_photo_path' => $path,

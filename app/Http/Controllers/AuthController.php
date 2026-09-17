@@ -91,9 +91,9 @@ class AuthController extends Controller
 
         $user = User::where('phone', $request->phone)->first();
 
-        if (! $user || ! Hash::check($request->password, $user->password)) {
+        if (! $user || $user->is_guest || ! $user->password || ! Hash::check($request->password, $user->password)) {
             throw ValidationException::withMessages([
-                'phone' => ['The provided credentials are incorrect.'],
+                'phone' => ['The provided credentials are incorrect or account is not registered. Please sign up or book a slot.'],
             ]);
         }
 

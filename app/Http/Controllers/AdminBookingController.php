@@ -10,8 +10,16 @@ class AdminBookingController extends Controller
 {
     public function index()
     {
-        // Get all bookings with user, court and bookedBy info, ordered by newest first
-        $bookings = Booking::with(['user', 'court', 'bookedBy'])->latest()->get();
+        // Get all bookings with user, court, bookedBy and action admin info, ordered by newest first
+        $bookings = Booking::with([
+            'user', 
+            'court', 
+            'bookedBy', 
+            'confirmedBy', 
+            'rejectedBy', 
+            'cancelledBy', 
+            'rescheduledBy'
+        ])->latest()->get();
         return response()->json($bookings);
     }
 
@@ -88,6 +96,13 @@ class AdminBookingController extends Controller
                 ]);
             }
 
+            $recipientPhone = $targetBooking->customer_phone ?: ($targetBooking->user ? $targetBooking->user->phone : null);
+            $recipientName = $targetBooking->customer_name ?: ($targetBooking->user ? $targetBooking->user->name : 'Valued Member');
+
+            if ($recipientPhone) {
+                SmsService::sendSms($recipientPhone, "Dear {$recipientName}, your booking request {$reference} for KEYS Club could not be confirmed at this time. Please check available slots or contact us.");
+            }
+
             return response()->json([
                 'message' => 'Booking rejected successfully.',
                 'booking' => $targetBooking
@@ -136,6 +151,24 @@ class AdminBookingController extends Controller
         }
 
         return \Illuminate\Support\Facades\DB::transaction(function() use ($mergedChunks, $courtId, $date, $user, $request) {
+            foreach ($mergedChunks as $chunk) {
+                $existing = Booking::where('court_id', $courtId)
+                    ->where('booking_date', $date)
+                    ->where(function ($q) use ($chunk) {
+                        $q->where('start_time', '<', $chunk['end_time'])
+                          ->where('end_time', '>', $chunk['start_time']);
+                    })
+                    ->whereIn('status', ['Pending', 'Confirmed', 'Blocked'])
+                    ->lockForUpdate()
+                    ->first();
+
+                if ($existing) {
+                    throw \Illuminate\Validation\ValidationException::withMessages([
+                        'slot' => ['This slot is currently booked. Please choose another slot.'],
+                    ]);
+                }
+            }
+
             $blockedRecords = [];
             $blockRef = '#BLOCK-' . strtoupper(\Illuminate\Support\Str::random(5));
 
@@ -211,7 +244,7 @@ class AdminBookingController extends Controller
 
         if ($existing) {
             throw \Illuminate\Validation\ValidationException::withMessages([
-                'slot' => ['This slot is already booked. Please choose another.'],
+                'slot' => ['This slot is currently booked. Please choose another slot.'],
             ]);
         }
 

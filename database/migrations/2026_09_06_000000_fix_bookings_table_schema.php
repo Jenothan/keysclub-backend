@@ -25,7 +25,8 @@ return new class extends Migration
             // Ignore if index already exists
         }
 
-        // 3. Change status column type to VARCHAR(50) in PostgreSQL
+        // 3. Change status column type to VARCHAR(50) in PostgreSQL and drop check constraint
+        DB::statement("ALTER TABLE bookings DROP CONSTRAINT IF EXISTS bookings_status_check;");
         DB::statement("ALTER TABLE bookings ALTER COLUMN status TYPE VARCHAR(50);");
         DB::statement("ALTER TABLE bookings ALTER COLUMN status SET DEFAULT 'Pending';");
     }

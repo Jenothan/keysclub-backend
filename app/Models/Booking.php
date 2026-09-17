@@ -54,4 +54,24 @@ class Booking extends Model
     {
         return $this->belongsTo(User::class, 'booked_by_id');
     }
+
+    public function confirmedBy()
+    {
+        return $this->belongsTo(User::class, 'confirmed_by');
+    }
+
+    public function rejectedBy()
+    {
+        return $this->belongsTo(User::class, 'rejected_by');
+    }
+
+    public function cancelledBy()
+    {
+        return $this->belongsTo(User::class, 'cancelled_by');
+    }
+
+    public function rescheduledBy()
+    {
+        return $this->belongsTo(User::class, 'rescheduled_by');
+    }
 }

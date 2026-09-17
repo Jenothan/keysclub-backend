@@ -81,6 +81,75 @@ class BookingController extends Controller
             return strcmp($a['start_time'], $b['start_time']);
         });
 
+        // Peak Hours & Limits Validation
+        $websiteData = \App\Models\WebsiteData::first();
+        $peakStart = $websiteData->peak_start_time ?? '15:00:00';
+        $peakEnd = $websiteData->peak_end_time ?? '20:00:00';
+        $peakOffDays = is_array($websiteData?->peak_off_days) ? $websiteData->peak_off_days : ['Saturday', 'Sunday'];
+
+        $dayOfWeek = Carbon::parse($date)->format('l');
+        $isPeakDay = !in_array($dayOfWeek, $peakOffDays);
+
+        $isSlotPeak = function ($startTime, $endTime) use ($isPeakDay, $peakStart, $peakEnd) {
+            if (!$isPeakDay) return false;
+            return ($startTime < $peakEnd && $endTime > $peakStart);
+        };
+
+        $requestedTotalSlots = 0;
+        $requestedPeakSlots = 0;
+        $hasPeakSlot = false;
+
+        foreach ($rawSlots as $slot) {
+            $h1 = intval(substr($slot['start_time'], 0, 2));
+            $h2 = intval(substr($slot['end_time'], 0, 2));
+            $hours = max(1, $h2 - $h1);
+            $requestedTotalSlots += $hours;
+
+            if ($isSlotPeak($slot['start_time'], $slot['end_time'])) {
+                $hasPeakSlot = true;
+                $requestedPeakSlots += $hours;
+            }
+        }
+
+        if ($hasPeakSlot && !$isAdmin && ($user->is_guest || empty($user->password))) {
+            throw ValidationException::withMessages([
+                'slot' => ['Peak hour slots are reserved exclusively for registered Members. Please log in or choose non-peak slots.'],
+            ]);
+        }
+
+        if (!$isAdmin) {
+            $existingUserBookings = Booking::where('user_id', $user->id)
+                ->where('booking_date', $date)
+                ->whereIn('status', ['Pending', 'Confirmed'])
+                ->get();
+
+            $existingTotalSlots = 0;
+            $existingPeakSlots = 0;
+
+            foreach ($existingUserBookings as $b) {
+                $h1 = intval(substr($b->start_time, 0, 2));
+                $h2 = intval(substr($b->end_time, 0, 2));
+                $hours = max(1, $h2 - $h1);
+                $existingTotalSlots += $hours;
+
+                if ($isSlotPeak($b->start_time, $b->end_time)) {
+                    $existingPeakSlots += $hours;
+                }
+            }
+
+            if (($existingTotalSlots + $requestedTotalSlots) > 3) {
+                throw ValidationException::withMessages([
+                    'slot' => ['Maximum 3 slots per day allowed.'],
+                ]);
+            }
+
+            if (($existingPeakSlots + $requestedPeakSlots) > 2) {
+                throw ValidationException::withMessages([
+                    'slot' => ['Maximum 2 peak hour slots per day allowed.'],
+                ]);
+            }
+        }
+
         // Merge contiguous slots (e.g. 16:00:00-17:00:00 + 17:00:00-18:00:00 => 16:00:00-18:00:00)
         $mergedChunks = [];
         foreach ($rawSlots as $s) {
@@ -129,7 +198,7 @@ class BookingController extends Controller
 
                 if ($isUnavailable) {
                     throw ValidationException::withMessages([
-                        'slot' => ['One or more of your selected time slots are currently unavailable. Please choose available slots.'],
+                        'slot' => ['This slot is currently booked. Please choose another slot.'],
                     ]);
                 }
             }
