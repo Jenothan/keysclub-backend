@@ -41,7 +41,7 @@ class PhoneUpdateController extends Controller
         SmsService::incrementDailyOtpCount($phone);
 
         // Send OTP via SMSlenz.lk API
-        SmsService::sendSms($phone, "Your KEYS Club phone update OTP is: {$otp}. Valid for 10 minutes.");
+        SmsService::sendSms($phone, "Your OTP to update the phone number for Badminton Court booking at Karanavai East Youth Sports Club is: {$otp}. Valid for 10 minutes.");
 
         return response()->json(['message' => 'OTP sent successfully']);
     }

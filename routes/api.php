@@ -16,12 +16,18 @@ use App\Http\Controllers\AdminManagementController;
 use App\Http\Controllers\WebsiteDataController;
 use App\Http\Controllers\AdminUserController;
 use App\Http\Controllers\InquiryController;
+use App\Http\Controllers\BookingOtpController;
+use App\Http\Controllers\MembershipRequestController;
 
 Route::post('/register/request-otp', [AuthController::class, 'requestRegisterOtp']);
 Route::post('/register/verify', [AuthController::class, 'verifyAndRegister']);
 Route::post('/login', [AuthController::class, 'login']);
 Route::post('/password/forgot/request-otp', [AuthController::class, 'requestForgotPasswordOtp']);
 Route::post('/password/forgot/reset', [AuthController::class, 'resetPasswordWithOtp']);
+
+// Booking Guest & OTP Flow
+Route::post('/booking/request-otp', [BookingOtpController::class, 'requestOtp']);
+Route::post('/booking/verify-otp', [BookingOtpController::class, 'verifyOtp']);
 
 Route::get('/courts', [CourtController::class, 'index']);
 Route::get('/availability', [AvailabilityController::class, 'index']);
@@ -41,6 +47,13 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::post('/user/photo', [ProfileController::class, 'updatePhoto']);
     Route::post('/user/password', [ProfileController::class, 'updatePassword']);
     
+    // Membership Request (User)
+    Route::get('/membership-request/status', [MembershipRequestController::class, 'myStatus']);
+    Route::post('/membership-request', [MembershipRequestController::class, 'store']);
+
+    // Guest Account Password Setup
+    Route::post('/booking/set-password', [BookingOtpController::class, 'setPassword']);
+
     // Phone OTP Flow
     Route::post('/user/phone/request-otp', [PhoneUpdateController::class, 'requestOtp']);
     Route::post('/user/phone/verify-otp', [PhoneUpdateController::class, 'verifyOtp']);
@@ -54,12 +67,20 @@ Route::middleware('auth:sanctum')->group(function () {
 
 // --- GENERAL ADMIN ROUTES ---
 Route::middleware(['auth:sanctum', 'role:Admin,Super Admin'])->prefix('admin')->group(function () {
-    // Dashboard Stats
+    // Dashboard Stats & Manual SMS Trigger
     Route::get('/stats', [AdminDashboardController::class, 'stats']);
+    Route::post('/send-daily-summary-sms', [AdminDashboardController::class, 'sendDailySummarySms']);
     
     // Users Management
     Route::get('/users', [AdminUserController::class, 'index']);
     Route::post('/users/{id}/toggle-status', [AdminUserController::class, 'toggleStatus']);
+    Route::post('/users/{id}/toggle-member', [AdminUserController::class, 'toggleMember']);
+
+    // Membership Requests Management
+    Route::get('/membership-requests', [MembershipRequestController::class, 'index']);
+    Route::post('/membership-requests/{id}/approve', [MembershipRequestController::class, 'approve']);
+    Route::post('/membership-requests/{id}/reject', [MembershipRequestController::class, 'reject']);
+    Route::get('/membership-requests/{id}/proof', [MembershipRequestController::class, 'serveProof']);
     
     // Bookings Management
     Route::get('/bookings', [AdminBookingController::class, 'index']);

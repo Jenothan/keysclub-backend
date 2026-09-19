@@ -14,7 +14,7 @@ class BookingController extends Controller
     public function index(Request $request)
     {
         $tab = $request->query('tab', 'upcoming');
-        $query = $request->user()->bookings()->with('court');
+        $query = $request->user()->bookings()->with(['court', 'user', 'bookedBy']);
 
         if ($tab === 'past') {
             $query->where(function ($q) {
@@ -81,6 +81,75 @@ class BookingController extends Controller
             return strcmp($a['start_time'], $b['start_time']);
         });
 
+        // Peak Hours & Limits Validation
+        $websiteData = \App\Models\WebsiteData::first();
+        $peakStart = $websiteData->peak_start_time ?? '15:00:00';
+        $peakEnd = $websiteData->peak_end_time ?? '20:00:00';
+        $peakOffDays = is_array($websiteData?->peak_off_days) ? $websiteData->peak_off_days : ['Saturday', 'Sunday'];
+
+        $dayOfWeek = Carbon::parse($date)->format('l');
+        $isPeakDay = !in_array($dayOfWeek, $peakOffDays);
+
+        $isSlotPeak = function ($startTime, $endTime) use ($isPeakDay, $peakStart, $peakEnd) {
+            if (!$isPeakDay) return false;
+            return ($startTime < $peakEnd && $endTime > $peakStart);
+        };
+
+        $requestedTotalSlots = 0;
+        $requestedPeakSlots = 0;
+        $hasPeakSlot = false;
+
+        foreach ($rawSlots as $slot) {
+            $h1 = intval(substr($slot['start_time'], 0, 2));
+            $h2 = intval(substr($slot['end_time'], 0, 2));
+            $hours = max(1, $h2 - $h1);
+            $requestedTotalSlots += $hours;
+
+            if ($isSlotPeak($slot['start_time'], $slot['end_time'])) {
+                $hasPeakSlot = true;
+                $requestedPeakSlots += $hours;
+            }
+        }
+
+        if ($hasPeakSlot && !$isAdmin && ($user->is_guest || empty($user->password))) {
+            throw ValidationException::withMessages([
+                'slot' => ['Peak hour slots are reserved exclusively for registered Members. Please log in or choose non-peak slots.'],
+            ]);
+        }
+
+        if (!$isAdmin) {
+            $existingUserBookings = Booking::where('user_id', $user->id)
+                ->where('booking_date', $date)
+                ->whereIn('status', ['Pending', 'Confirmed'])
+                ->get();
+
+            $existingTotalSlots = 0;
+            $existingPeakSlots = 0;
+
+            foreach ($existingUserBookings as $b) {
+                $h1 = intval(substr($b->start_time, 0, 2));
+                $h2 = intval(substr($b->end_time, 0, 2));
+                $hours = max(1, $h2 - $h1);
+                $existingTotalSlots += $hours;
+
+                if ($isSlotPeak($b->start_time, $b->end_time)) {
+                    $existingPeakSlots += $hours;
+                }
+            }
+
+            if (($existingTotalSlots + $requestedTotalSlots) > 3) {
+                throw ValidationException::withMessages([
+                    'slot' => ['Maximum 3 slots per day allowed.'],
+                ]);
+            }
+
+            if (($existingPeakSlots + $requestedPeakSlots) > 2) {
+                throw ValidationException::withMessages([
+                    'slot' => ['Maximum 2 peak hour slots per day allowed.'],
+                ]);
+            }
+        }
+
         // Merge contiguous slots (e.g. 16:00:00-17:00:00 + 17:00:00-18:00:00 => 16:00:00-18:00:00)
         $mergedChunks = [];
         foreach ($rawSlots as $s) {
@@ -96,95 +165,99 @@ class BookingController extends Controller
             }
         }
 
-        // Check availability for all merged chunks
-        foreach ($mergedChunks as $chunk) {
-            $existing = Booking::where('court_id', $courtId)
-                ->where('booking_date', $date)
-                ->where(function ($q) use ($chunk) {
-                    $q->where('start_time', '<', $chunk['end_time'])
-                      ->where('end_time', '>', $chunk['start_time']);
-                })
-                ->whereIn('status', ['Pending', 'Confirmed', 'Blocked'])
-                ->lockForUpdate()
-                ->first();
+        return \Illuminate\Support\Facades\DB::transaction(function () use ($mergedChunks, $courtId, $date, $user, $isAdmin, $request) {
+            // Check availability for all merged chunks
+            foreach ($mergedChunks as $chunk) {
+                $existing = Booking::where('court_id', $courtId)
+                    ->where('booking_date', $date)
+                    ->where(function ($q) use ($chunk) {
+                        $q->where('start_time', '<', $chunk['end_time'])
+                          ->where('end_time', '>', $chunk['start_time']);
+                    })
+                    ->whereIn('status', ['Pending', 'Confirmed', 'Blocked'])
+                    ->lockForUpdate()
+                    ->first();
 
-            $override = \App\Models\SlotOverride::whereDate('date', $date)
-                ->where(function ($q) use ($courtId) {
-                    $q->whereNull('court_id')->orWhere('court_id', $courtId);
-                })
-                ->where('start_time', '<', $chunk['end_time'])
-                ->where('end_time', '>', $chunk['start_time'])
-                ->first();
+                $override = \App\Models\SlotOverride::whereDate('date', $date)
+                    ->where(function ($q) use ($courtId) {
+                        $q->whereNull('court_id')->orWhere('court_id', $courtId);
+                    })
+                    ->where('start_time', '<', $chunk['end_time'])
+                    ->where('end_time', '>', $chunk['start_time'])
+                    ->first();
 
-            $recurringBlock = \App\Models\RecurringBlockedSlot::where('is_active', true)
-                ->where(function ($q) use ($courtId) {
-                    $q->whereNull('court_id')->orWhere('court_id', $courtId);
-                })
-                ->where('start_time', '<', $chunk['end_time'])
-                ->where('end_time', '>', $chunk['start_time'])
-                ->first();
+                $recurringBlock = \App\Models\RecurringBlockedSlot::where('is_active', true)
+                    ->where(function ($q) use ($courtId) {
+                        $q->whereNull('court_id')->orWhere('court_id', $courtId);
+                    })
+                    ->where('start_time', '<', $chunk['end_time'])
+                    ->where('end_time', '>', $chunk['start_time'])
+                    ->first();
 
-            $isUnavailable = $existing || ($override && $override->status === 'Blocked') || ($recurringBlock && (!$override || $override->status !== 'Available'));
+                $isUnavailable = $existing || ($override && $override->status === 'Blocked') || ($recurringBlock && (!$override || $override->status !== 'Available'));
 
-            if ($isUnavailable) {
-                throw ValidationException::withMessages([
-                    'slot' => ['One or more of your selected time slots are currently unavailable. Please choose available slots.'],
-                ]);
+                if ($isUnavailable) {
+                    throw ValidationException::withMessages([
+                        'slot' => ['This slot is currently booked. Please choose another slot.'],
+                    ]);
+                }
             }
-        }
 
-        // Generate ONE shared booking reference for this entire request
-        $bookingReference = '#KC-' . strtoupper(Str::random(6));
-        $createdBookings = [];
-        $formattedTimeRanges = [];
+            // Generate ONE shared booking reference for this entire request
+            $bookingReference = '#KC-' . strtoupper(Str::random(6));
+            $createdBookings = [];
+            $formattedTimeRanges = [];
 
-        foreach ($mergedChunks as $chunk) {
-            $bookingData = [
+            foreach ($mergedChunks as $chunk) {
+                $bookingData = [
+                    'booking_reference' => $bookingReference,
+                    'court_id' => $courtId,
+                    'booking_date' => $date,
+                    'start_time' => $chunk['start_time'],
+                    'end_time' => $chunk['end_time'],
+                    'status' => 'Confirmed',
+                    'booked_by_id' => $user->id,
+                ];
+
+                if ($isAdmin && ($request->filled('customer_name') || $request->filled('customer_phone'))) {
+                    $bookingData['user_id'] = null;
+                    $bookingData['customer_name'] = $request->customer_name;
+                    $bookingData['customer_phone'] = $request->customer_phone;
+                } else {
+                    $bookingData['user_id'] = $user->id;
+                    $bookingData['customer_name'] = $request->customer_name ?: $user->name;
+                    $bookingData['customer_phone'] = $request->customer_phone ?: $user->phone;
+                }
+                $bRecord = Booking::create($bookingData);
+                $bRecord->load(['user', 'court', 'bookedBy']);
+
+                $createdBookings[] = $bRecord;
+
+                $startFmt = Carbon::parse($chunk['start_time'])->format('h:i A');
+                $endFmt = Carbon::parse($chunk['end_time'])->format('h:i A');
+                $formattedTimeRanges[] = "{$startFmt} - {$endFmt}";
+            }
+
+            $timeDisplay = implode(', ', $formattedTimeRanges);
+            $dateDisplay = Carbon::parse($date)->format('d/m/Y');
+
+            // Send 1 single SMS notification for the booking confirmation
+            $firstBooking = $createdBookings[0];
+            $recipientPhone = $firstBooking->customer_phone ?: ($user ? $user->phone : null);
+            $recipientName = $firstBooking->customer_name ?: ($user ? $user->name : 'Valued Member');
+
+            if ($recipientPhone) {
+                SmsService::sendSms($recipientPhone, "Dear {$recipientName}, your court booking {$bookingReference} for {$dateDisplay} ({$timeDisplay}) is CONFIRMED at Badminton Court, Karanavai East Youth Sports Club! Play • Grow • Win!");
+            }
+
+            return response()->json([
+                'message' => 'Booking confirmed successfully',
+                'booking' => $createdBookings[0],
+                'bookings' => $createdBookings,
                 'booking_reference' => $bookingReference,
-                'court_id' => $courtId,
-                'booking_date' => $date,
-                'start_time' => $chunk['start_time'],
-                'end_time' => $chunk['end_time'],
-                'status' => 'Pending',
-                'booked_by_id' => $user->id,
-            ];
-
-            if ($isAdmin && ($request->filled('customer_name') || $request->filled('customer_phone'))) {
-                $bookingData['user_id'] = null;
-                $bookingData['customer_name'] = $request->customer_name;
-                $bookingData['customer_phone'] = $request->customer_phone;
-                $bRecord = Booking::create($bookingData);
-            } else {
-                $bookingData['user_id'] = $user->id;
-                $bRecord = Booking::create($bookingData);
-            }
-
-            $createdBookings[] = $bRecord;
-
-            $startFmt = Carbon::parse($chunk['start_time'])->format('h:i A');
-            $endFmt = Carbon::parse($chunk['end_time'])->format('h:i A');
-            $formattedTimeRanges[] = "{$startFmt} - {$endFmt}";
-        }
-
-        $timeDisplay = implode(', ', $formattedTimeRanges);
-        $dateDisplay = Carbon::parse($date)->format('d/m/Y');
-
-        // Send 1 single SMS notification for the booking request
-        $firstBooking = $createdBookings[0];
-        $recipientPhone = $firstBooking->customer_phone ?: ($user ? $user->phone : null);
-        $recipientName = $firstBooking->customer_name ?: ($user ? $user->name : 'Valued Member');
-
-        if ($recipientPhone) {
-            SmsService::sendSms($recipientPhone, "Dear {$recipientName}, your court booking request {$bookingReference} for {$dateDisplay} ({$timeDisplay}) has been received by KEYS Club.");
-        }
-
-        return response()->json([
-            'message' => 'Booking request submitted successfully',
-            'booking' => $createdBookings[0],
-            'bookings' => $createdBookings,
-            'booking_reference' => $bookingReference,
-            'time_display' => $timeDisplay,
-        ], 201);
+                'time_display' => $timeDisplay,
+            ], 201);
+        });
     }
 
     public function cancel(Request $request, $id)
@@ -199,10 +272,22 @@ class BookingController extends Controller
             return response()->json(['message' => 'Cannot cancel a completed booking'], 400);
         }
 
-        $booking->update([
-            'status' => 'Cancelled',
-            'cancelled_by' => $request->user()->id
-        ]);
+        \Illuminate\Support\Facades\DB::transaction(function() use ($booking, $request) {
+            if ($booking->booking_reference) {
+                Booking::where('booking_reference', $booking->booking_reference)
+                    ->whereIn('status', ['Pending', 'Confirmed'])
+                    ->update([
+                        'status' => 'Cancelled',
+                        'cancelled_by' => $request->user()->id,
+                        'updated_at' => now(),
+                    ]);
+            } else {
+                $booking->update([
+                    'status' => 'Cancelled',
+                    'cancelled_by' => $request->user()->id
+                ]);
+            }
+        });
 
         return response()->json(['message' => 'Booking cancelled successfully', 'booking' => $booking]);
     }

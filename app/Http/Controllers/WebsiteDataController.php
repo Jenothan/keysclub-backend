@@ -12,7 +12,20 @@ class WebsiteDataController extends Controller
         $data = WebsiteData::first();
         
         if (!$data) {
-            return response()->json(new \stdClass());
+            $data = WebsiteData::create([
+                'primary_phone' => '+94 77 123 4567',
+                'support_email' => 'info@keysclub.lk',
+                'club_address' => 'Karanavai East, Karaveddy, Jaffna, Sri Lanka.',
+                'facebook_url' => 'https://facebook.com',
+                'instagram_url' => 'https://instagram.com',
+                'court_pricing' => 'LKR 400',
+                'membership_pricing' => 'LKR 1,000',
+                'registration_fee' => 'LKR 2,000',
+                'full_day_pricing' => 'LKR 3,000',
+                'peak_start_time' => '15:00:00',
+                'peak_end_time' => '20:00:00',
+                'peak_off_days' => ['Saturday', 'Sunday'],
+            ]);
         }
 
         return response()->json($data);
@@ -30,6 +43,9 @@ class WebsiteDataController extends Controller
             'membership_pricing' => 'nullable|string',
             'registration_fee' => 'nullable|string',
             'full_day_pricing' => 'nullable|string',
+            'peak_start_time' => 'nullable|string',
+            'peak_end_time' => 'nullable|string',
+            'peak_off_days' => 'nullable|array',
         ]);
 
         $data = WebsiteData::first();

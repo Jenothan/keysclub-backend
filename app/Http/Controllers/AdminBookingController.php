@@ -10,8 +10,16 @@ class AdminBookingController extends Controller
 {
     public function index()
     {
-        // Get all bookings with user, court and bookedBy info, ordered by newest first
-        $bookings = Booking::with(['user', 'court', 'bookedBy'])->latest()->get();
+        // Get all bookings with user, court, bookedBy and action admin info, ordered by newest first
+        $bookings = Booking::with([
+            'user', 
+            'court', 
+            'bookedBy', 
+            'confirmedBy', 
+            'rejectedBy', 
+            'cancelledBy', 
+            'rescheduledBy'
+        ])->latest()->get();
         return response()->json($bookings);
     }
 
@@ -23,42 +31,44 @@ class AdminBookingController extends Controller
             return response()->json(['message' => 'Only pending bookings can be confirmed.'], 422);
         }
 
-        $reference = $targetBooking->booking_reference;
-        $groupBookings = Booking::with('user')
-            ->where('booking_reference', $reference)
-            ->where('status', 'Pending')
-            ->get();
+        return \Illuminate\Support\Facades\DB::transaction(function() use ($targetBooking) {
+            $reference = $targetBooking->booking_reference;
+            $groupBookings = Booking::with('user')
+                ->where('booking_reference', $reference)
+                ->where('status', 'Pending')
+                ->get();
 
-        if ($groupBookings->isEmpty()) {
-            $groupBookings = collect([$targetBooking]);
-        }
+            if ($groupBookings->isEmpty()) {
+                $groupBookings = collect([$targetBooking]);
+            }
 
-        $timeRanges = [];
-        foreach ($groupBookings as $b) {
-            $b->status = 'Confirmed';
-            $b->confirmed_by = request()->user()->id;
-            $b->save();
+            $timeRanges = [];
+            foreach ($groupBookings as $b) {
+                $b->status = 'Confirmed';
+                $b->confirmed_by = request()->user()->id;
+                $b->save();
 
-            $startFmt = \Carbon\Carbon::parse($b->start_time)->format('h:i A');
-            $endFmt = \Carbon\Carbon::parse($b->end_time)->format('h:i A');
-            $timeRanges[] = "{$startFmt} - {$endFmt}";
-        }
+                $startFmt = \Carbon\Carbon::parse($b->start_time)->format('h:i A');
+                $endFmt = \Carbon\Carbon::parse($b->end_time)->format('h:i A');
+                $timeRanges[] = "{$startFmt} - {$endFmt}";
+            }
 
-        $timeDisplay = implode(', ', array_unique($timeRanges));
-        $dateDisplay = \Carbon\Carbon::parse($targetBooking->booking_date)->format('d/m/Y');
+            $timeDisplay = implode(', ', array_unique($timeRanges));
+            $dateDisplay = \Carbon\Carbon::parse($targetBooking->booking_date)->format('d/m/Y');
 
-        // Send 1 single SMS notification for booking confirmation
-        $recipientPhone = $targetBooking->customer_phone ?: ($targetBooking->user ? $targetBooking->user->phone : null);
-        $recipientName = $targetBooking->customer_name ?: ($targetBooking->user ? $targetBooking->user->name : 'Valued Member');
+            // Send 1 single SMS notification for booking confirmation
+            $recipientPhone = $targetBooking->customer_phone ?: ($targetBooking->user ? $targetBooking->user->phone : null);
+            $recipientName = $targetBooking->customer_name ?: ($targetBooking->user ? $targetBooking->user->name : 'Valued Member');
 
-        if ($recipientPhone) {
-            SmsService::sendSms($recipientPhone, "Dear {$recipientName}, your booking {$reference} for {$dateDisplay} ({$timeDisplay}) at KEYS Club has been CONFIRMED! Play • Grow • Win.");
-        }
-        
-        return response()->json([
-            'message' => 'Booking confirmed successfully.',
-            'booking' => $targetBooking
-        ]);
+            if ($recipientPhone) {
+                SmsService::sendSms($recipientPhone, "Dear {$recipientName}, your booking {$reference} for {$dateDisplay} ({$timeDisplay}) at Badminton Court, Karanavai East Youth Sports Club has been CONFIRMED! Play • Grow • Win!");
+            }
+            
+            return response()->json([
+                'message' => 'Booking confirmed successfully.',
+                'booking' => $targetBooking
+            ]);
+        });
     }
 
     public function reject($id)
@@ -69,19 +79,35 @@ class AdminBookingController extends Controller
             return response()->json(['message' => 'Only pending bookings can be rejected.'], 422);
         }
 
-        $reference = $targetBooking->booking_reference;
-        Booking::where('booking_reference', $reference)
-            ->where('status', 'Pending')
-            ->update([
-                'status' => 'Rejected',
-                'rejected_by' => request()->user()->id,
-                'updated_at' => now(),
-            ]);
+        return \Illuminate\Support\Facades\DB::transaction(function() use ($targetBooking) {
+            $reference = $targetBooking->booking_reference;
+            if ($reference) {
+                Booking::where('booking_reference', $reference)
+                    ->where('status', 'Pending')
+                    ->update([
+                        'status' => 'Rejected',
+                        'rejected_by' => request()->user()->id,
+                        'updated_at' => now(),
+                    ]);
+            } else {
+                $targetBooking->update([
+                    'status' => 'Rejected',
+                    'rejected_by' => request()->user()->id,
+                ]);
+            }
 
-        return response()->json([
-            'message' => 'Booking rejected successfully.',
-            'booking' => $targetBooking
-        ]);
+            $recipientPhone = $targetBooking->customer_phone ?: ($targetBooking->user ? $targetBooking->user->phone : null);
+            $recipientName = $targetBooking->customer_name ?: ($targetBooking->user ? $targetBooking->user->name : 'Valued Member');
+
+            if ($recipientPhone) {
+                SmsService::sendSms($recipientPhone, "Dear {$recipientName}, your booking request {$reference} for KEYS Club could not be confirmed at this time. Please check available slots or contact us.");
+            }
+
+            return response()->json([
+                'message' => 'Booking rejected successfully.',
+                'booking' => $targetBooking
+            ]);
+        });
     }
 
     public function blockSlots(Request $request)
@@ -124,24 +150,44 @@ class AdminBookingController extends Controller
             }
         }
 
-        $blockedRecords = [];
-        $blockRef = '#BLOCK-' . strtoupper(\Illuminate\Support\Str::random(5));
+        return \Illuminate\Support\Facades\DB::transaction(function() use ($mergedChunks, $courtId, $date, $user, $request) {
+            foreach ($mergedChunks as $chunk) {
+                $existing = Booking::where('court_id', $courtId)
+                    ->where('booking_date', $date)
+                    ->where(function ($q) use ($chunk) {
+                        $q->where('start_time', '<', $chunk['end_time'])
+                          ->where('end_time', '>', $chunk['start_time']);
+                    })
+                    ->whereIn('status', ['Pending', 'Confirmed', 'Blocked'])
+                    ->lockForUpdate()
+                    ->first();
 
-        foreach ($mergedChunks as $chunk) {
-            $blockedRecords[] = Booking::create([
-                'booking_reference' => $blockRef,
-                'court_id' => $courtId,
-                'booking_date' => $date,
-                'start_time' => $chunk['start_time'],
-                'end_time' => $chunk['end_time'],
-                'status' => 'Blocked',
-                'customer_name' => 'Blocked by Admin',
-                'booked_by_id' => $user->id,
-                'notes' => $request->notes ?? 'Blocked by Admin',
-            ]);
-        }
+                if ($existing) {
+                    throw \Illuminate\Validation\ValidationException::withMessages([
+                        'slot' => ['This slot is currently booked. Please choose another slot.'],
+                    ]);
+                }
+            }
 
-        return response()->json(['message' => 'Slots blocked successfully', 'blocked' => $blockedRecords], 201);
+            $blockedRecords = [];
+            $blockRef = '#BLOCK-' . strtoupper(\Illuminate\Support\Str::random(5));
+
+            foreach ($mergedChunks as $chunk) {
+                $blockedRecords[] = Booking::create([
+                    'booking_reference' => $blockRef,
+                    'court_id' => $courtId,
+                    'booking_date' => $date,
+                    'start_time' => $chunk['start_time'],
+                    'end_time' => $chunk['end_time'],
+                    'status' => 'Blocked',
+                    'customer_name' => 'Blocked by Admin',
+                    'booked_by_id' => $user->id,
+                    'notes' => $request->notes ?? 'Blocked by Admin',
+                ]);
+            }
+
+            return response()->json(['message' => 'Slots blocked successfully', 'blocked' => $blockedRecords], 201);
+        });
     }
 
     public function cancel(Request $request, $id)
@@ -152,10 +198,22 @@ class AdminBookingController extends Controller
             return response()->json(['message' => 'Booking is already cancelled'], 400);
         }
 
-        $booking->update([
-            'status' => 'Cancelled',
-            'cancelled_by' => $request->user()->id
-        ]);
+        \Illuminate\Support\Facades\DB::transaction(function() use ($booking, $request) {
+            if ($booking->booking_reference) {
+                Booking::where('booking_reference', $booking->booking_reference)
+                    ->whereIn('status', ['Pending', 'Confirmed'])
+                    ->update([
+                        'status' => 'Cancelled',
+                        'cancelled_by' => $request->user()->id,
+                        'updated_at' => now(),
+                    ]);
+            } else {
+                $booking->update([
+                    'status' => 'Cancelled',
+                    'cancelled_by' => $request->user()->id
+                ]);
+            }
+        });
 
         return response()->json(['message' => 'Booking cancelled successfully', 'booking' => $booking]);
     }
@@ -186,7 +244,7 @@ class AdminBookingController extends Controller
 
         if ($existing) {
             throw \Illuminate\Validation\ValidationException::withMessages([
-                'slot' => ['This slot is already booked. Please choose another.'],
+                'slot' => ['This slot is currently booked. Please choose another slot.'],
             ]);
         }
 

@@ -36,7 +36,7 @@ class AdminManagementController extends Controller
         $validated = $request->validate([
             'name' => 'required|string|max:255',
             'phone' => 'required|string|max:20|unique:users,phone',
-            'email' => 'required|string|email|max:255|unique:users,email',
+            'email' => 'nullable|string|email|max:255',
             'password' => 'required|string|min:8',
         ]);
 
@@ -67,7 +67,7 @@ class AdminManagementController extends Controller
         SmsService::incrementDailyOtpCount($validated['phone']);
 
         // Send OTP via SMS
-        SmsService::sendSms($validated['phone'], "Your KEYS Club Admin creation OTP is: {$otpCode}. Valid for 10 minutes.");
+        SmsService::sendSms($validated['phone'], "Your OTP to create an Admin account for Badminton Court at Karanavai East Youth Sports Club is: {$otpCode}. Valid for 10 minutes.");
 
         return response()->json([
             'message' => 'OTP sent successfully.'
@@ -112,7 +112,7 @@ class AdminManagementController extends Controller
         $admin = User::create([
             'name' => $adminData['name'],
             'phone' => $adminData['phone'],
-            'email' => $adminData['email'],
+            'email' => $adminData['email'] ?? null,
             'password' => Hash::make($adminData['password']),
             'role' => 'Admin',
             'phone_verified_at' => now(),
