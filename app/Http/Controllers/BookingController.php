@@ -215,7 +215,7 @@ class BookingController extends Controller
                     'booking_date' => $date,
                     'start_time' => $chunk['start_time'],
                     'end_time' => $chunk['end_time'],
-                    'status' => 'Pending',
+                    'status' => 'Confirmed',
                     'booked_by_id' => $user->id,
                 ];
 
@@ -241,17 +241,17 @@ class BookingController extends Controller
             $timeDisplay = implode(', ', $formattedTimeRanges);
             $dateDisplay = Carbon::parse($date)->format('d/m/Y');
 
-            // Send 1 single SMS notification for the booking request
+            // Send 1 single SMS notification for the booking confirmation
             $firstBooking = $createdBookings[0];
             $recipientPhone = $firstBooking->customer_phone ?: ($user ? $user->phone : null);
             $recipientName = $firstBooking->customer_name ?: ($user ? $user->name : 'Valued Member');
 
             if ($recipientPhone) {
-                SmsService::sendSms($recipientPhone, "Dear {$recipientName}, your court booking request {$bookingReference} for {$dateDisplay} ({$timeDisplay}) has been received by Badminton Court at Karanavai East Youth Sports Club.");
+                SmsService::sendSms($recipientPhone, "Dear {$recipientName}, your court booking {$bookingReference} for {$dateDisplay} ({$timeDisplay}) is CONFIRMED at Badminton Court, Karanavai East Youth Sports Club! Play • Grow • Win!");
             }
 
             return response()->json([
-                'message' => 'Booking request submitted successfully',
+                'message' => 'Booking confirmed successfully',
                 'booking' => $createdBookings[0],
                 'bookings' => $createdBookings,
                 'booking_reference' => $bookingReference,

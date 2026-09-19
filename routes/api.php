@@ -67,8 +67,9 @@ Route::middleware('auth:sanctum')->group(function () {
 
 // --- GENERAL ADMIN ROUTES ---
 Route::middleware(['auth:sanctum', 'role:Admin,Super Admin'])->prefix('admin')->group(function () {
-    // Dashboard Stats
+    // Dashboard Stats & Manual SMS Trigger
     Route::get('/stats', [AdminDashboardController::class, 'stats']);
+    Route::post('/send-daily-summary-sms', [AdminDashboardController::class, 'sendDailySummarySms']);
     
     // Users Management
     Route::get('/users', [AdminUserController::class, 'index']);

@@ -9,6 +9,7 @@ use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Facades\Response;
 
 use App\Services\CloudinaryService;
+use App\Services\SmsService;
 
 class MembershipRequestController extends Controller
 {
@@ -72,6 +73,12 @@ class MembershipRequestController extends Controller
             'status' => 'Pending',
         ]);
 
+        // Send SMS to user acknowledging receipt of request
+        if ($user->phone) {
+            $smsMsg = "Hello {$user->name}, we received your KEYS Club court membership request. We will review it shortly and update you. Thank you!";
+            SmsService::sendSms($user->phone, $smsMsg);
+        }
+
         return response()->json([
             'message' => 'Membership request submitted successfully! Admin will review your application.',
             'data' => $membershipRequest,
@@ -125,6 +132,13 @@ class MembershipRequestController extends Controller
             $membershipRequest->user->update([
                 'is_member' => true,
             ]);
+
+            // Send SMS notification on approval
+            if ($membershipRequest->user->phone) {
+                $userName = $membershipRequest->user->name;
+                $smsMsg = "Congratulations {$userName}! Your KEYS Club court membership request has been approved. You can now book Peak Hour slots!";
+                SmsService::sendSms($membershipRequest->user->phone, $smsMsg);
+            }
         }
 
         return response()->json([
@@ -144,12 +158,21 @@ class MembershipRequestController extends Controller
 
         $membershipRequest = MembershipRequest::with('user')->findOrFail($id);
 
+        $reason = $request->rejection_reason ?? 'Request did not meet requirements.';
+
         $membershipRequest->update([
             'status' => 'Rejected',
-            'rejection_reason' => $request->rejection_reason ?? 'Request did not meet requirements.',
+            'rejection_reason' => $reason,
             'reviewed_by' => $request->user()->id,
             'reviewed_at' => now(),
         ]);
+
+        // Send SMS notification on rejection
+        if ($membershipRequest->user && $membershipRequest->user->phone) {
+            $userName = $membershipRequest->user->name;
+            $smsMsg = "Hello {$userName}, your KEYS Club court membership request was not approved. Reason: {$reason}";
+            SmsService::sendSms($membershipRequest->user->phone, $smsMsg);
+        }
 
         return response()->json([
             'message' => 'Membership request rejected.',
