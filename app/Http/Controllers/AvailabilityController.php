@@ -38,7 +38,7 @@ class AvailabilityController extends Controller
 
         $bookings = Booking::with('user')->where('court_id', $courtId)
             ->where('booking_date', $date)
-            ->whereIn('status', ['Pending', 'Confirmed', 'Blocked'])
+            ->whereIn('status', ['Confirmed', 'Blocked'])
             ->get();
 
         $isBlockedDate = \App\Models\BlockedDate::whereDate('date', $date)->exists();
@@ -70,13 +70,14 @@ class AvailabilityController extends Controller
                 return $slot['start_time'] >= $r->start_time && $slot['end_time'] <= $r->end_time;
             });
 
-            $slotStartDateTime = \Carbon\Carbon::parse($date . ' ' . $slot['start_time']);
-            $isPastSlot = $isPastDate || ($isToday && $now->greaterThanOrEqualTo($slotStartDateTime));
+            $slotStartDateTime = \Carbon\Carbon::parse($date . ' ' . $slot['start_time'], 'Asia/Colombo');
+            $slotCutoffTime = $slotStartDateTime->copy()->subHours(2);
+            $isPastSlot = $now->greaterThanOrEqualTo($slotCutoffTime);
 
             if ($isBlockedDate || ($booking && $booking->status === 'Blocked')) {
                 $status = 'Blocked';
             } elseif ($booking) {
-                $status = $booking->status === 'Confirmed' ? 'Booked' : ($booking->status === 'Pending' ? 'Pending' : $booking->status);
+                $status = ($booking->status === 'Confirmed' || $booking->status === 'Booked') ? 'Booked' : $booking->status;
             } elseif ($override) {
                 $status = $override->status;
             } elseif ($recurringBlock) {

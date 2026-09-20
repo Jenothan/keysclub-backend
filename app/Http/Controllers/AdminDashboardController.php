@@ -14,7 +14,7 @@ class AdminDashboardController extends Controller
     {
         $today = Carbon::today()->format('Y-m-d');
         
-        $todaysBookings = Booking::where('booking_date', $today)->whereIn('status', ['Confirmed', 'Pending'])->count();
+        $todaysBookings = Booking::where('booking_date', $today)->where('status', 'Confirmed')->count();
         $pendingMemberships = \App\Models\MembershipRequest::where('status', 'Pending')->count();
         $confirmedBookings = Booking::where('status', 'Confirmed')->count();
         $newInquiries = Inquiry::where('status', 'Pending')->count();
