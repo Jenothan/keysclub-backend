@@ -158,7 +158,7 @@ class AdminBookingController extends Controller
                         $q->where('start_time', '<', $chunk['end_time'])
                           ->where('end_time', '>', $chunk['start_time']);
                     })
-                    ->whereIn('status', ['Pending', 'Confirmed', 'Blocked'])
+                    ->whereIn('status', ['Confirmed', 'Blocked'])
                     ->lockForUpdate()
                     ->first();
 
@@ -201,7 +201,7 @@ class AdminBookingController extends Controller
         \Illuminate\Support\Facades\DB::transaction(function() use ($booking, $request) {
             if ($booking->booking_reference) {
                 Booking::where('booking_reference', $booking->booking_reference)
-                    ->whereIn('status', ['Pending', 'Confirmed'])
+                    ->where('status', 'Confirmed')
                     ->update([
                         'status' => 'Cancelled',
                         'cancelled_by' => $request->user()->id,
@@ -234,28 +234,99 @@ class AdminBookingController extends Controller
 
         $date = \Carbon\Carbon::parse($request->date)->format('Y-m-d');
         
-        $existing = Booking::where('court_id', $booking->court_id)
+        $bookingReference = $booking->booking_reference;
+        $relatedBookings = ($bookingReference && $bookingReference !== '#KC-') 
+            ? Booking::where('booking_reference', $bookingReference)->get()
+            : collect([$booking]);
+
+        $relatedIds = $relatedBookings->pluck('id')->toArray();
+
+        // Check conflict against OTHER bookings (excluding related bookings in same reference)
+        $conflict = Booking::where('court_id', $booking->court_id)
             ->where('booking_date', $date)
-            ->where('start_time', $request->start_time)
-            ->where('id', '!=', $booking->id)
-            ->whereIn('status', ['Pending', 'Confirmed'])
+            ->whereNotIn('id', $relatedIds)
+            ->where(function ($q) use ($request) {
+                $q->where('start_time', '<', $request->end_time)
+                  ->where('end_time', '>', $request->start_time);
+            })
+            ->whereIn('status', ['Confirmed', 'Blocked'])
             ->lockForUpdate()
             ->first();
 
-        if ($existing) {
+        if ($conflict) {
             throw \Illuminate\Validation\ValidationException::withMessages([
                 'slot' => ['This slot is currently booked. Please choose another slot.'],
             ]);
         }
 
-        $booking->update([
-            'booking_date' => $date,
-            'start_time' => $request->start_time,
-            'end_time' => $request->end_time,
-            'rescheduled_by' => $request->user()->id,
-            // Keep status as it was or set to Confirmed since admin is doing it. We'll set to Confirmed.
-            'status' => 'Confirmed' 
-        ]);
+        \Illuminate\Support\Facades\DB::transaction(function() use ($relatedBookings, $booking, $date, $request) {
+            $primaryBooking = $relatedBookings->first() ?? $booking;
+
+            if ($request->has('slots') && is_array($request->slots) && count($request->slots) > 0) {
+                $requestSlots = $request->slots;
+                $existingCount = count($relatedBookings);
+                $newCount = count($requestSlots);
+
+                for ($i = 0; $i < max($existingCount, $newCount); $i++) {
+                    if ($i < $newCount) {
+                        $s = $requestSlots[$i];
+                        if ($i < $existingCount) {
+                            $relatedBookings[$i]->update([
+                                'booking_date' => $date,
+                                'start_time' => $s['start_time'],
+                                'end_time' => $s['end_time'],
+                                'rescheduled_by' => $request->user()->id,
+                                'status' => 'Confirmed',
+                                'updated_at' => now(),
+                            ]);
+                        } else {
+                            Booking::create([
+                                'booking_reference' => $primaryBooking->booking_reference,
+                                'court_id' => $primaryBooking->court_id,
+                                'user_id' => $primaryBooking->user_id,
+                                'customer_name' => $primaryBooking->customer_name,
+                                'customer_phone' => $primaryBooking->customer_phone,
+                                'booking_date' => $date,
+                                'start_time' => $s['start_time'],
+                                'end_time' => $s['end_time'],
+                                'status' => 'Confirmed',
+                                'booked_by_id' => $primaryBooking->booked_by_id,
+                                'rescheduled_by' => $request->user()->id,
+                            ]);
+                        }
+                    } else {
+                        $relatedBookings[$i]->delete();
+                    }
+                }
+            } else {
+                foreach ($relatedBookings as $b) {
+                    $b->update([
+                        'booking_date' => $date,
+                        'start_time' => $request->start_time,
+                        'end_time' => $request->end_time,
+                        'rescheduled_by' => $request->user()->id,
+                        'status' => 'Confirmed',
+                        'updated_at' => now(),
+                    ]);
+                }
+            }
+        });
+
+        // Send instant SMS notification to customer
+        $recipientPhone = $booking->customer_phone ?: ($booking->user ? $booking->user->phone : null);
+        $recipientName = $booking->customer_name ?: ($booking->user ? $booking->user->name : 'Valued Member');
+
+        if ($recipientPhone) {
+            $dateDisplay = \Carbon\Carbon::parse($date)->format('d/m/Y');
+            $startFmt = \Carbon\Carbon::parse($request->start_time)->format('h:i A');
+            $endFmt = \Carbon\Carbon::parse($request->end_time)->format('h:i A');
+            $ref = $booking->booking_reference ?: "#KC-{$booking->id}";
+
+            \App\Services\SmsService::sendSms(
+                $recipientPhone,
+                "Dear {$recipientName}, your court booking {$ref} has been RESCHEDULED to {$dateDisplay} ({$startFmt} - {$endFmt}) at Badminton Court, Karanavai East Youth Sports Club! Play • Grow • Win!"
+            );
+        }
 
         return response()->json(['message' => 'Booking rescheduled successfully', 'booking' => $booking]);
     }

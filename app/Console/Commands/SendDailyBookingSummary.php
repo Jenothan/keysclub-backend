@@ -43,10 +43,10 @@ class SendDailyBookingSummary extends Command
             return 1;
         }
 
-        // Fetch today's active bookings (Confirmed and Pending)
+        // Fetch today's active bookings (Confirmed)
         $bookings = Booking::with(['user', 'court'])
             ->whereDate('booking_date', $today)
-            ->whereIn('status', ['Confirmed', 'Pending'])
+            ->where('status', 'Confirmed')
             ->orderBy('start_time', 'asc')
             ->get();
 
